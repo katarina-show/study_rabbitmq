@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 查找最新的schemaLocation 访问 http://www.springframework.org/schema/ -->
+<beans xmlns="http://www.springframework.org/schema/beans"
+	   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	   xmlns:context="http://www.springframework.org/schema/context"
+	   xmlns:rabbit="http://www.springframework.org/schema/rabbit"
+	   xsi:schemaLocation="
+           http://www.springframework.org/schema/beans
+           http://www.springframework.org/schema/beans/spring-beans-4.0.xsd
+           http://www.springframework.org/schema/context
+           http://www.springframework.org/schema/context/spring-context-4.0.xsd
+           http://www.springframework.org/schema/rabbit
+           http://www.springframework.org/schema/rabbit/spring-rabbit-2.0.xsd">
+
+     <!-- 配置扫描路径 -->
+    <context:component-scan base-package="com.sjw">
+     	<context:exclude-filter type="annotation" expression="org.springframework.stereotype.Controller"/>
+    </context:component-scan>
+
+	<!-- rabbitMQ配置 -->
+    <!-- 配置连接工厂 -->
+	<bean id="rabbitConnectionFactory"
+		  class="org.springframework.amqp.rabbit.connection.CachingConnectionFactory">
+		<constructor-arg value="127.0.0.1"/>
+		<property name="username" value="guest"/>
+		<property name="password" value="guest"/>
+		<property name="channelCacheSize" value="8"/>
+		<property name="port" value="5672"/>
+	</bean>
+    <!--Spring的rabbitmq admin-->
+	<rabbit:admin connection-factory="rabbitConnectionFactory"/>
+
+    <!-- fanout交换器 begin-->
+    <!-- 定义队列 -->
+	<rabbit:queue name="h1_queue" durable="false"/>
+	<rabbit:queue name="h2_queue" durable="false"/>
+	<rabbit:queue name="h3_queue" durable="false"/>
+
+    <!-- rabbit:fanout-exchange 把需要数据的队列与交换器绑定一起 -->
+	<rabbit:fanout-exchange name="fanout-exchange"
+							xmlns="http://www.springframework.org/schema/rabbit"
+							durable="false">
+		<rabbit:bindings>
+            <rabbit:binding queue="h1_queue"/>
+            <rabbit:binding queue="h2_queue"/>
+            <rabbit:binding queue="h3_queue"/>
+		</rabbit:bindings>
+	</rabbit:fanout-exchange>
+    <!-- fanout交换器 end-->
+
+
+    <!-- topic交换器 begin-->
+    <!-- 定义队列 -->
+    <!-- 所有日志 队列-->
+    <rabbit:queue name="all_log_queue" durable="false"/>
+    <!-- 所有邮件日志 队列-->
+    <rabbit:queue name="email_all_queue" durable="false"/>
+    <!-- 邮件错误日志 队列-->
+    <rabbit:queue name="email_error_queue" durable="false"/>
+    <!-- 所有错误日志 队列-->
+    <rabbit:queue name="all_error_queue" durable="false"/>
+    <!-- 其它队列 依次定义即可 这里就写这4个-->
+
+    <!-- rabbit:topic-exchange 把需要数据的队列通过路由键与交换器绑定一起 -->
+    <rabbit:topic-exchange name="topic-exchange"
+                           xmlns="http://www.springframework.org/schema/rabbit"
+                           durable="false">
+        <rabbit:bindings>
+            <!--topic交换机的pattern参数重点注意下，即表达式匹配-->
+            <rabbit:binding queue="all_log_queue" pattern="#"/>
+            <rabbit:binding queue="email_all_queue" pattern="*.email"/>
+            <rabbit:binding queue="email_error_queue" pattern="error.email"/>
+            <rabbit:binding queue="all_error_queue" pattern="error.*"/>
+        </rabbit:bindings>
+    </rabbit:topic-exchange>
+    <!-- topic交换器 end-->
+
+    <!--消费者定义 用spring标准的bean定义即可，或者直接用注解@Component标注-->
+    <bean id="h1_Consumer" class="com.sjw.service.fanout.H1_Service"/>
+    <bean id="h2_Consumer" class="com.sjw.service.fanout.H2_Service"/>
+    <bean id="h3_Consumer" class="com.sjw.service.fanout.H3_Service"/>
+
+    <!-- topic的4个消费者就用@Component声明了 -->
+
+
+
+    <!--监听容器，主要作用是把消费者和队列关联起来-->
+    <rabbit:listener-container connection-factory="rabbitConnectionFactory">
+        <rabbit:listener ref="h1_Consumer" queues="h1_queue" method="onMessage" />
+        <rabbit:listener ref="h2_Consumer" queues="h2_queue" method="onMessage" />
+        <rabbit:listener ref="h3_Consumer" queues="h3_queue" method="onMessage" />
+        <rabbit:listener ref="allLogTopicService" queues="all_log_queue" method="onMessage" />
+        <rabbit:listener ref="emailAllTopicService" queues="email_all_queue" method="onMessage" />
+        <rabbit:listener ref="emailErrorTopicService" queues="email_error_queue" method="onMessage" />
+        <rabbit:listener ref="allErrorTopicService" queues="all_error_queue" method="onMessage" />
+    </rabbit:listener-container>
+
+
+</beans>  
